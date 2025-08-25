@@ -24,7 +24,8 @@
 
     <!-- 여기에 React 코드 -->
     <script type="text/babel">
-      const API_BASE = "http://34.133.102.47:8000"; // ← 네 서버 API 주소
+      const API_BASE = ""; // ← 네 서버 API 주소
+      const call = await fetch(`/api/search`, { method:"POST", ... })
 
       function App() {
         const [query, setQuery] = React.useState("");
