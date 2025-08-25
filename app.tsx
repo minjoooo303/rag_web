@@ -1,11 +1,12 @@
+// src/App.tsx
 import React, { useMemo, useState } from "react";
 import { Search, MessageCircle, History, Star, ExternalLink, CircleHelp, ThumbsUp, Wrench, Bookmark, Share2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 /**
- * HACCP 통합 정보 웹 UI (React + Tailwind + shadcn/ui 스타일 가이드)
- * - 단일 파일 컴포넌트. 페이지에 그대로 렌더해도 동작합니다.
- * - 더미 데이터와 간단한 상호작용(검색, 탭, 별점/피드백)을 포함합니다.
+ * HACCP 통합 정보 웹 UI (React + Tailwind)
+ * - 백엔드 RAG API (/search) 연동 버전
+ * - .env: VITE_API_BASE_URL=http://<서버공인IP>:8000
  */
 
 // ---- 유틸: 별점 컴포넌트 ----
@@ -29,9 +30,7 @@ function StarRating({ value = 4.5, outOf = 5, onChange }: { value?: number; outO
               onMouseLeave={() => setHoverIdx(null)}
               onClick={() => onChange?.(i)}
             >
-              <Star
-                className={`w-5 h-5 ${filled ? "fill-current" : half ? "[&>path]:opacity-100" : ""}`}
-              />
+              <Star className={`w-5 h-5 ${filled ? "fill-current" : half ? "[&>path]:opacity-100" : ""}`} />
             </button>
           );
         })}
@@ -49,7 +48,12 @@ function ReferenceItem({ title, page, link }: { title: string; page: string; lin
         <div className="text-sm text-muted-foreground">{page}</div>
         <div className="font-medium truncate">{title}</div>
       </div>
-      <a href={link ?? "#"} className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm">
+      <a
+        href={link ?? "#"}
+        target={link ? "_blank" : undefined}
+        rel={link ? "noreferrer" : undefined}
+        className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm"
+      >
         문서보기 <ExternalLink className="w-4 h-4" />
       </a>
     </div>
@@ -67,9 +71,7 @@ function Tabs({ value, onChange }: { value: string; onChange: (v: string) => voi
         <button
           key={key}
           className={`relative -mb-px px-4 py-3 text-sm font-medium flex items-center gap-2 transition ${
-            value === key
-              ? "text-primary border-b-2 border-primary"
-              : "text-muted-foreground hover:text-foreground"
+            value === key ? "text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
           }`}
           onClick={() => onChange(key)}
         >
@@ -85,30 +87,21 @@ function Tabs({ value, onChange }: { value: string; onChange: (v: string) => voi
 function Bubble({ role, children }: { role: "Q" | "A"; children: React.ReactNode }) {
   const isQ = role === "Q";
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`rounded-2xl p-4 md:p-5 border ${
-        isQ ? "bg-sky-50/60 border-sky-100" : "bg-red-50/60 border-red-100"
-      }`}
-    >
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`rounded-2xl p-4 md:p-5 border ${isQ ? "bg-sky-50/60 border-sky-100" : "bg-red-50/60 border-red-100"}`}>
       <div className="flex items-start gap-3">
-        <div
-          className={`grid place-items-center w-7 h-7 rounded-full text-white shrink-0 ${
-            isQ ? "bg-sky-500" : "bg-red-500"
-          }`}
-        >
-          {role}
-        </div>
-        <div className="prose prose-sm max-w-none leading-relaxed">
-          {children}
-        </div>
+        <div className={`grid place-items-center w-7 h-7 rounded-full text-white shrink-0 ${isQ ? "bg-sky-500" : "bg-red-500"}`}>{role}</div>
+        <div className="prose prose-sm max-w-none leading-relaxed">{children}</div>
       </div>
     </motion.div>
   );
 }
 
-// ---- 메인 컴포넌트 ----
+type SearchResult = {
+  source: string;        // 백엔드 chunks[].source
+  text: string;          // 본문
+  enriched_text?: string // 선택 필드
+};
+
 export default function App() {
   const [tab, setTab] = useState("qa");
   const [query, setQuery] = useState("");
@@ -116,9 +109,35 @@ export default function App() {
   const [helpful, setHelpful] = useState(0);
   const [needsWork, setNeedsWork] = useState(0);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 실제 연동 시, query를 이용해 API 호출
+    if (!query.trim()) return;
+
+    try {
+      setLoading(true);
+      setErr(null);
+      setResults([]);
+
+      const res = await fetch(`${API_BASE}/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, top_k: 5 }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setResults(Array.isArray(data?.results) ? data.results : []);
+    } catch (e:any) {
+      setErr(e?.message ?? "검색 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -134,10 +153,7 @@ export default function App() {
             </div>
           </div>
 
-          <a
-            href="#"
-            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-accent/50 transition text-sm"
-          >
+          <a href="#" className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border hover:bg-accent/50 transition text-sm">
             스마트HACCP 플랫폼
           </a>
         </div>
@@ -155,6 +171,7 @@ export default function App() {
               className="w-full pl-10 pr-4 py-3 rounded-2xl border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </form>
+          {err && <p className="mt-2 text-sm text-red-600">⚠ {err}</p>}
         </div>
       </section>
 
@@ -165,19 +182,33 @@ export default function App() {
 
           {tab === "qa" ? (
             <div className="mt-4 space-y-4">
-              <Bubble role="Q">
-                <p>
-                  식품위생법 기준에서 <b>유리잔류염소</b>의 모니터링 방법은 무엇인가요?
-                </p>
-              </Bubble>
+              {/* Q */}
+              {query && (
+                <Bubble role="Q">
+                  <p>
+                    <b>질문:</b> {query}
+                  </p>
+                </Bubble>
+              )}
 
-              <Bubble role="A">
-                <p>
-                  식품위생법에 따르면 세균수의 측정은 주로 표준 평판배양법(Standard Plate Count Method)을 사용합니다.
-                  샘플을 멸균 희석한 후, 특정 배지(예: Plate Count Agar)에 <u>도말</u>하여 35–37℃에서 24–48시간 배양한 뒤
-                  CFU/mL로 계산합니다. 기준치는 식품 유형에 따라 다르며, 예를 들어 일반 세균수는 1g당 10^5 CFU 이하로 규정될 수 있습니다.
-                </p>
-              </Bubble>
+              {/* A (요약 느낌으로 첫 결과 노출) */}
+              {loading ? (
+                <Bubble role="A">
+                  <p>검색 중입니다…</p>
+                </Bubble>
+              ) : results.length > 0 ? (
+                <Bubble role="A">
+                  <p>
+                    관련 조문 {results.length}건을 찾았습니다. 아래 참고자료에서 원문을 확인할 수 있어요.
+                  </p>
+                </Bubble>
+              ) : (
+                query && !loading && (
+                  <Bubble role="A">
+                    <p>관련 결과가 없습니다. 질문을 조금 더 구체적으로 변경해 보세요.</p>
+                  </Bubble>
+                )
+              )}
 
               {/* 신뢰도 + 피드백 */}
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -205,23 +236,22 @@ export default function App() {
               <section className="mt-2">
                 <div className="text-sm font-semibold mb-2">참고자료</div>
                 <div className="space-y-2">
-                  <ReferenceItem
-                    page="식품위생법 법령 (페이지: 20,25)"
-                    title="식품위생법 시행규칙 — 일반세균수 관련 조항"
-                    link="#"
-                  />
-                  <ReferenceItem
-                    page="안전관리 인증기준(HACCP) 평가 심사매뉴얼_최종 (페이지: 15)"
-                    title="HACCP 심사 매뉴얼 — 미생물 모니터링"
-                    link="#"
-                  />
+                  {loading && <p className="text-sm text-muted-foreground">불러오는 중…</p>}
+                  {!loading && results.length === 0 && <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>}
+                  {!loading &&
+                    results.map((r, idx) => (
+                      <ReferenceItem
+                        key={idx}
+                        page={r.source || "출처 미상"}
+                        title={(r.enriched_text || r.text || "").slice(0, 80) + (r.text && r.text.length > 80 ? "…" : "")}
+                        link="#" // 필요 시 원문 URL 필드 연결
+                      />
+                    ))}
                 </div>
               </section>
             </div>
           ) : (
-            <div className="mt-6 text-sm text-muted-foreground">
-              아직 대화기록이 없습니다. 질문을 입력해 보세요.
-            </div>
+            <div className="mt-6 text-sm text-muted-foreground">아직 대화기록이 없습니다. 질문을 입력해 보세요.</div>
           )}
         </div>
 
@@ -241,9 +271,7 @@ export default function App() {
 
       {/* 푸터 */}
       <footer className="border-t">
-        <div className="max-w-6xl mx-auto px-4 py-6 text-xs text-muted-foreground">
-          ⓒ 2025 HACCP AI. 본 화면은 프로토타입 데모입니다.
-        </div>
+        <div className="max-w-6xl mx-auto px-4 py-6 text-xs text-muted-foreground">ⓒ 2025 HACCP AI. 본 화면은 프로토타입 데모입니다.</div>
       </footer>
     </div>
   );
