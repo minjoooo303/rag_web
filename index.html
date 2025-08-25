@@ -1,127 +1,103 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>HACCP RAG Demo</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HACCP RAG Test (Vanilla)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin:0; padding:24px; }
+    .row { display:flex; gap:8px; margin-bottom:12px; }
+    input, button { padding:8px 10px; font-size:14px; }
+    input { flex:1; }
+    .card { border:1px solid #ddd; border-radius:10px; padding:12px; margin:8px 0; }
+    .muted { color:#666; font-size:12px; }
+    .error { background:#fff3f3; border:1px solid #ffcccc; color:#b10000; padding:10px; border-radius:8px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>HACCP RAG Test (Vanilla)</h1>
 
-    <!-- TailwindCSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+  <div class="row">
+    <input id="apiBase" placeholder="API 주소 (예: http://<서버IP>:8000)" />
+    <button id="saveApi">저장</button>
+    <a id="healthLink" href="#" target="_blank" rel="noreferrer">/health</a>
+  </div>
 
-    <!-- React & ReactDOM CDN -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <div id="mixed" class="error" style="display:none;"></div>
 
-    <!-- Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <div class="row">
+    <input id="query" placeholder="질문을 입력하세요" />
+    <button id="searchBtn">검색</button>
+  </div>
 
-    <style> body { background:#fff; font-family: system-ui, sans-serif; } </style>
-  </head>
-  <body>
-    <div id="root"></div>
+  <div id="error" class="error" style="display:none;"></div>
+  <div id="results"></div>
 
-    <script type="text/babel">
-      function App() {
-        const [apiBase, setApiBase]   = React.useState(localStorage.getItem("API_BASE") || "");
-        const [query, setQuery]       = React.useState("");
-        const [results, setResults]   = React.useState([]);
-        const [error, setError]       = React.useState("");
-        const [loading, setLoading]   = React.useState(false);
+  <script>
+    const apiBaseEl = document.getElementById('apiBase');
+    const healthLink = document.getElementById('healthLink');
+    const mixedEl = document.getElementById('mixed');
+    const errEl = document.getElementById('error');
+    const resultsEl = document.getElementById('results');
 
-        React.useEffect(() => {
-          if (location.protocol === "https:" && apiBase.startsWith("http://")) {
-            setError("현재 페이지는 HTTPS이고, API가 HTTP라서 브라우저가 요청을 차단합니다(Mixed Content). API를 HTTPS로 노출하거나, 페이지를 HTTP에서 열어주세요.");
-          }
-        }, [apiBase]);
+    // load saved API
+    apiBaseEl.value = localStorage.getItem('API_BASE') || '';
 
-        const saveApi = (e) => {
-          e.preventDefault();
-          localStorage.setItem("API_BASE", apiBase);
-          setError("");
-        };
-
-        const handleSearch = async (e) => {
-          e.preventDefault();
-          setError("");
-          setResults([]);
-          if (!apiBase) { setError("API 주소를 먼저 저장하세요."); return; }
-          if (!query.trim()) return;
-
-          setLoading(true);
-          try {
-            const res = await fetch(`${apiBase}/search`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ query, top_k: 5 })
-            });
-            if (!res.ok) {
-              const txt = await res.text();
-              throw new Error(`HTTP ${res.status}: ${txt.slice(0,200)}`);
-            }
-            const data = await res.json();
-            setResults(data.results || []);
-          } catch (err) {
-            console.error(err);
-            setError(String(err));
-          } finally {
-            setLoading(false);
-          }
-        };
-
-        return (
-          <div className="max-w-3xl mx-auto p-6 space-y-6">
-            <h1 className="text-2xl font-bold">HACCP 생성형 AI 통합 정보 제공 서비스</h1>
-
-            {/* API 주소 설정 */}
-            <form onSubmit={saveApi} className="flex gap-2 items-center">
-              <input
-                className="flex-1 border rounded px-3 py-2"
-                value={apiBase}
-                onChange={(e) => setApiBase(e.target.value)}
-                placeholder="예) http://<서버IP>:8000"
-              />
-              <button className="px-4 py-2 bg-slate-900 text-white rounded">저장</button>
-              <a className="text-sm underline ml-2" href={apiBase ? `${apiBase}/health` : "#"} target="_blank" rel="noreferrer">/health 열기</a>
-            </form>
-
-            {/* 검색 */}
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <input
-                className="flex-1 border rounded px-3 py-2"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="질문을 입력하세요"
-              />
-              <button className="px-4 py-2 bg-blue-600 text-white rounded" disabled={loading}>
-                {loading ? "검색 중…" : "검색"}
-              </button>
-            </form>
-
-            {/* 에러 메시지 */}
-            {error && (
-              <div className="p-3 border border-red-300 bg-red-50 text-red-700 text-sm whitespace-pre-wrap">
-                {error}
-              </div>
-            )}
-
-            {/* 결과 */}
-            <div className="space-y-3">
-              {(!results || results.length === 0) && !loading ? (
-                <p className="text-gray-500 text-sm">검색 결과가 여기에 표시됩니다.</p>
-              ) : (
-                results.map((r, i) => (
-                  <div key={i} className="p-3 border rounded">
-                    <div className="text-sm text-gray-500 mb-1">{r.source}</div>
-                    <div className="whitespace-pre-wrap">{r.text || r.enriched_text}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
+    function updateLinks() {
+      const base = apiBaseEl.value.trim();
+      if (base) healthLink.href = base + '/health';
+      // Mixed Content 경고
+      if (location.protocol === 'https:' && /^http:\/\//i.test(base)) {
+        mixedEl.style.display = 'block';
+        mixedEl.textContent = '이 페이지는 HTTPS인데 API가 HTTP입니다. 브라우저가 요청을 차단합니다 (Mixed Content). API를 HTTPS로 노출하거나, 페이지를 HTTP로 열어주세요.';
+      } else {
+        mixedEl.style.display = 'none';
       }
+    }
+    updateLinks();
 
-      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-    </script>
-  </body>
+    document.getElementById('saveApi').onclick = () => {
+      localStorage.setItem('API_BASE', apiBaseEl.value.trim());
+      updateLinks();
+      alert('저장 완료');
+    };
+
+    document.getElementById('searchBtn').onclick = async () => {
+      errEl.style.display = 'none';
+      resultsEl.innerHTML = '';
+      const base = apiBaseEl.value.trim();
+      const q = document.getElementById('query').value.trim();
+      if (!base) { alert('API 주소를 먼저 입력/저장하세요.'); return; }
+      if (!q)    { alert('질문을 입력하세요.'); return; }
+
+      try {
+        const res = await fetch(base + '/search', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body: JSON.stringify({ query: q, top_k: 5 })
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error('HTTP ' + res.status + ': ' + txt.slice(0,200));
+        }
+        const data = await res.json();
+        const arr = data.results || [];
+        if (arr.length === 0) resultsEl.innerHTML = '<div class="muted">결과 없음</div>';
+        arr.forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'card';
+          div.innerHTML = `
+            <div class="muted">${r.source || ''}</div>
+            <div>${(r.text || r.enriched_text || '').replace(/\n/g, '<br>')}</div>
+          `;
+          resultsEl.appendChild(div);
+        });
+      } catch (e) {
+        errEl.style.display = 'block';
+        errEl.textContent = String(e);
+        console.error(e);
+      }
+    };
+  </script>
+</body>
 </html>
