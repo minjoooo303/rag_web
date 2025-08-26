@@ -1,503 +1,61 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>법령 RAG (라우팅 + 검색) 데모</title>
-  <style>
-    :root {
-      --primary:#2563eb; --ok:#16a34a; --warn:#ca8a04; --err:#dc2626; --muted:#6b7280;
-      --card:#ffffff; --bg:#f6f7fb; --border:#e5e7eb;
-    }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color:#111827; margin:0; }
-    header { padding:18px 20px; border-bottom:1px solid var(--border); background:#fff; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-    header h1 { font-size:18px; margin:0; font-weight:700; }
-    .container { max-width:1100px; margin:20px auto; padding:0 16px 40px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .grow { flex:1 1 280px; }
-    input, button, select { font-size:14px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#fff; }
-    input:focus, select:focus { outline:none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
-    button { background: var(--primary); color:#fff; border: none; cursor: pointer; }
-    button.secondary { background:#fff; color:#111; border:1px solid var(--border); }
-    button.ghost { background:transparent; color:#111; border:1px dashed var(--border); }
-    button:disabled { opacity:.6; cursor: not-allowed; }
-    .k { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; background:#f3f4f6; border:1px solid var(--border); padding:2px 6px; border-radius:6px; color:#111; }
-    .badge { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#f3f4f6; color:#111; border-radius:999px; border:1px solid var(--border); font-size:12px; }
-    .pill { display:inline-block; padding:8px 12px; border-radius:999px; border:1px solid var(--border); background:#fff; cursor:pointer; user-select:none; }
-    .pill.active { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; }
-    .muted { color: var(--muted); }
-    .small { font-size:12px; }
-    .card { background: var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; }
-    .grid { display:grid; gap:12px; }
-    .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    @media (max-width: 900px) { .g2, .g3 { grid-template-columns: 1fr; } }
-    .section { margin-top:20px; }
-    .title { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }
-    .status { padding:12px; border-radius:12px; border:1px solid var(--border); background:#fff; white-space:pre-wrap; }
-    .status.ok { border-color:#bbf7d0; background:#f0fdf4; }
-    .status.warn { border-color:#fde68a; background:#fffbeb; }
-    .status.err { border-color:#fecaca; background:#fef2f2; color:#991b1b; }
-    .src { color:#374151; font-weight:600; margin-bottom:6px; word-break: break-all; }
-    .txt { color:#111827; white-space:pre-wrap; }
-    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    details { background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px 12px; }
-    summary { cursor:pointer; padding:6px 0; }
-    .hint { font-size:12px; color:#6b7280; }
-    .hr { height:1px; background:var(--border); margin:12px 0; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>법령 RAG (라우팅 + 검색)</h1>
-    <span class="badge">백엔드 <span id="apiBadge" class="k">미설정</span></span>
-    <a id="healthLink" class="k" href="#" target="_blank" rel="noreferrer">/health</a>
-  </header>
-
-  <div class="container">
-
-    <!-- API 설정 -->
-    <div class="card section">
-      <div class="title">
-        <strong>① API 설정</strong>
-        <span class="hint">Cloudflare 터널 도메인을 입력하세요. 예) https://xxxx.trycloudflare.com</span>
-      </div>
-      <div class="grid g3">
-        <input id="apiBase" class="grow" placeholder="API 베이스 URL (예: https://guild-fcc-lincoln-needs.trycloudflare.com)" />
-        <button id="saveApi">저장</button>
-        <button id="checkHealth" class="secondary">상태 확인</button>
-      </div>
-
-      <div id="mixedWarn" class="status warn" style="display:none; margin-top:10px;">
-        이 페이지는 <b>HTTPS</b>인데 API가 <b>HTTP</b>입니다. 브라우저가 요청을 차단합니다. API를 HTTPS로 노출(예: Cloudflare Tunnel)하거나, 이 페이지를 HTTP로 열어주세요.
-      </div>
-
-      <div id="healthBox" class="status" style="display:none; margin-top:10px;"></div>
-    </div>
-
-    <!-- 인덱스 로드 -->
-    <div class="card section">
-      <div class="title">
-        <strong>② 인덱스 로드 / 리빌드</strong>
-        <span class="hint">/load는 캐시가 있으면 로드, 없으면 생성합니다. /rebuild는 캐시를 무시하고 재생성합니다.</span>
-      </div>
-      <div class="grid g3">
-        <input id="baseDir" class="grow" placeholder="(선택) 문서 폴더 경로. 비우면 서버 기본값 사용" />
-        <button id="btnLoad">/load</button>
-        <button id="btnRebuild" class="secondary">/rebuild (force)</button>
-      </div>
-      <div id="loadBox" class="status" style="display:none; margin-top:10px;"></div>
-    </div>
-
-    <!-- 질의 & 라우팅 -->
-    <div class="card section">
-      <div class="title">
-        <strong>③ 질문 → 라우팅 → 검색</strong>
-        <span class="hint">/ask(자동 라우팅) 또는 /query(지정 카테고리) 사용</span>
-      </div>
-
-      <div class="grid g3">
-        <input id="queryInput" class="grow" placeholder="질문을 입력하세요. 예) 식품접객업 영업정지 기준은?" />
-        <select id="categorySelect" title="카테고리">
-          <option value="">자동(권장)</option>
-        </select>
-        <input id="topK" type="number" min="1" max="10" value="5" title="top_k" />
-      </div>
-
-      <div class="grid g3" style="margin-top:8px;">
-        <label class="grow">sem_threshold(라우팅) 
-          <input id="semTh" type="range" min="0" max="1" step="0.05" value="0.5" style="width:100%;">
-          <div class="small muted">현재 값: <span id="semThVal">0.5</span></div>
-        </label>
-        <label class="grow">alpha(하이브리드 점수 가중치)
-          <input id="alpha" type="range" min="0" max="1" step="0.05" value="1" style="width:100%;">
-          <div class="small muted">현재 값: <span id="alphaVal">1</span></div>
-        </label>
-        <div class="toolbar">
-          <button id="btnAsk">자동 라우팅으로 검색 (/ask)</button>
-          <button id="btnQuery" class="secondary">선택 카테고리로 검색 (/query)</button>
-        </div>
-      </div>
-
-      <div id="queryStatus" class="status" style="display:none; margin-top:10px;"></div>
-
-      <!-- 라우팅 후보 칩 -->
-      <div class="section" id="routesWrap" style="display:none;">
-        <div class="title"><strong>라우팅 후보</strong></div>
-        <div id="routes" class="row"></div>
-      </div>
-
-      <!-- 선택된 카테고리 -->
-      <div class="section" id="selectedWrap" style="display:none;">
-        <div class="title"><strong>선택된 카테고리</strong></div>
-        <div id="selectedCat" class="pill active"></div>
-      </div>
-
-      <!-- LLM 답변 -->
-      <div class="section" id="answerWrap" style="display:none;">
-        <div class="title"><strong>LLM 답변</strong></div>
-        <div id="answer" class="status"></div>
-      </div>
-
-      <!-- 관련 조문 -->
-      <div class="section">
-        <div class="title"><strong>관련 조문 문단</strong><span id="countBadge" class="badge" style="display:none;"></span></div>
-        <div id="docs" class="grid g2"></div>
-      </div>
-
-      <!-- Raw 응답 -->
-      <div class="section">
-        <details id="rawBox" style="display:none;">
-          <summary>Raw JSON 보기</summary>
-          <pre id="raw" class="small" style="overflow:auto;"></pre>
-        </details>
-      </div>
-    </div>
-
-    <p class="hint" style="margin-top:14px;">
-      팁: <span class="k">자동 라우팅</span> 후 후보 칩을 클릭하면 해당 카테고리로 <span class="k">/query</span> 재검색합니다.
-    </p>
-  </div>
-
-  <script>
-    // ------- 요소 참조 -------
-    const apiBaseEl = document.getElementById('apiBase');
-    const apiBadge  = document.getElementById('apiBadge');
-    const healthLink= document.getElementById('healthLink');
-    const mixedWarn = document.getElementById('mixedWarn');
-
-    const saveApiBtn= document.getElementById('saveApi');
-    const checkBtn  = document.getElementById('checkHealth');
-    const healthBox = document.getElementById('healthBox');
-
-    const baseDirEl = document.getElementById('baseDir');
-    const btnLoad   = document.getElementById('btnLoad');
-    const btnRebuild= document.getElementById('btnRebuild');
-    const loadBox   = document.getElementById('loadBox');
-
-    const queryInput= document.getElementById('queryInput');
-    const categorySelect = document.getElementById('categorySelect');
-    const topKEl    = document.getElementById('topK');
-    const semTh     = document.getElementById('semTh');
-    const semThVal  = document.getElementById('semThVal');
-    const alpha     = document.getElementById('alpha');
-    const alphaVal  = document.getElementById('alphaVal');
-
-    const btnAsk    = document.getElementById('btnAsk');
-    const btnQuery  = document.getElementById('btnQuery');
-    const queryStatus = document.getElementById('queryStatus');
-
-    const routesWrap= document.getElementById('routesWrap');
-    const routesEl  = document.getElementById('routes');
-    const selectedWrap = document.getElementById('selectedWrap');
-    const selectedCat  = document.getElementById('selectedCat');
-    const answerWrap = document.getElementById('answerWrap');
-    const answerEl   = document.getElementById('answer');
-    const docsEl     = document.getElementById('docs');
-    const countBadge = document.getElementById('countBadge');
-
-    const rawBox = document.getElementById('rawBox');
-    const rawEl  = document.getElementById('raw');
-
-    // ------- 상태 & 유틸 -------
-    function getBase() { return (apiBaseEl.value || '').trim(); }
-    function setBadge() {
-      const b = getBase();
-      apiBadge.textContent = b || '미설정';
-      healthLink.href = b ? (b + '/health') : '#';
-      // Mixed Content 경고
-      if (location.protocol === 'https:' && /^http:\/\//i.test(b)) {
-        mixedWarn.style.display = 'block';
-      } else {
-        mixedWarn.style.display = 'none';
-      }
-    }
-    function show(el, ok=true, text='', cls='') {
-      el.style.display = 'block';
-      el.textContent = text;
-      el.className = 'status ' + (cls || (ok ? 'ok' : 'err'));
-    }
-    function hide(el) { el.style.display = 'none'; }
-
-    function asJson(resp) {
-      return resp.json().catch(() => ({}));
-    }
-    function httpErrText(resp, data) {
-      const msg = data?.error || data?.detail || JSON.stringify(data) || resp.statusText;
-      return `HTTP ${resp.status} ${resp.statusText}: ${msg}`;
-    }
-
-    function ensureBase() {
-      const base = getBase();
-      if (!base) { alert('먼저 API 베이스 URL을 저장하세요.'); return false; }
-      return true;
-    }
-
-    function renderPassages(passages) {
-      docsEl.innerHTML = '';
-      if (!passages || passages.length === 0) {
-        docsEl.innerHTML = '<div class="muted small">관련 문서를 찾지 못했습니다.</div>';
-        countBadge.style.display = 'none';
-        return;
-      }
-      countBadge.style.display = 'inline-flex';
-      countBadge.textContent = `총 ${passages.length}건`;
-
-      passages.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <div class="src">${p.source || ''}</div>
-          <div class="txt">${(p.text || p.content || '').replace(/\n/g,'\n')}</div>
-        `;
-        docsEl.appendChild(card);
-      });
-    }
-
-    function renderRoutes(routes) {
-      routesEl.innerHTML = '';
-      if (!routes || routes.length === 0) {
-        routesWrap.style.display = 'none';
-        return;
-      }
-      routesWrap.style.display = 'block';
-      routes.forEach(r => {
-        const pill = document.createElement('div');
-        pill.className = 'pill';
-        pill.textContent = r.law;
-        pill.onclick = async () => {
-          // 칩 클릭 시 해당 카테고리로 /query 재검색
-          categorySelect.value = r.law;
-          await doQuery();
-        };
-        routesEl.appendChild(pill);
-      });
-    }
-
-    function setSelectedCategory(cat) {
-      if (!cat) { selectedWrap.style.display = 'none'; return; }
-      selectedWrap.style.display = 'block';
-      selectedCat.textContent = cat;
-    }
-
-    function renderAnswer(ans) {
-      answerWrap.style.display = 'block';
-      const text = (ans || '').trim();
-      if (text) {
-        answerEl.className = 'status ok';
-        answerEl.textContent = text;
-      } else {
-        answerEl.className = 'status';
-        answerEl.textContent = '— (LLM 미연동: 서버가 answer를 비워서 반환함)';
-      }
-    }
-
-    function setLoading(btns, loading) {
-      btns.forEach(b => b.disabled = loading);
-      if (loading) { show(queryStatus, true, '요청 처리 중...'); }
-      else hide(queryStatus);
-    }
-
-    // ------- 이벤트: 초기화 -------
-    (function init(){
-      apiBaseEl.value = localStorage.getItem('API_BASE') || '';
-      setBadge();
-      if (getBase()) refreshCategories(); // 카테고리 목록 미리 채우기
-    })();
-
-    // ------- 컨트롤 이벤트 -------
-    apiBaseEl.addEventListener('input', setBadge);
-    saveApiBtn.onclick = () => {
-      localStorage.setItem('API_BASE', getBase());
-      setBadge();
-      alert('저장 완료');
-      refreshCategories();
-    };
-    checkBtn.onclick = refreshHealth;
-
-    btnLoad.onclick = async () => {
-      if (!ensureBase()) return;
-      const base = getBase();
-      hide(loadBox);
-      show(loadBox, true, '로딩 중...');
-      try {
-        const body = {};
-        const bd = baseDirEl.value.trim();
-        if (bd) body.base_dir = bd;
-        const resp = await fetch(base + '/load', {
-          method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)
-        });
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-        show(loadBox, true, JSON.stringify(data, null, 2), 'ok');
-        refreshHealth();
-        refreshCategories();
-      } catch (e) {
-        show(loadBox, false, String(e));
-      }
-    };
-
-    btnRebuild.onclick = async () => {
-      if (!ensureBase()) return;
-      if (!confirm('캐시를 무시하고 재생성합니다. 시간이 걸릴 수 있습니다. 진행할까요?')) return;
-      const base = getBase();
-      hide(loadBox);
-      show(loadBox, true, '리빌드 중...');
-      try {
-        const body = { force: true };
-        const bd = baseDirEl.value.trim();
-        if (bd) body.base_dir = bd;
-        const resp = await fetch(base + '/rebuild', {
-          method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)
-        });
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-        show(loadBox, true, JSON.stringify(data, null, 2), 'ok');
-        refreshHealth();
-        refreshCategories();
-      } catch (e) {
-        show(loadBox, false, String(e));
-      }
-    };
-
-    semTh.addEventListener('input', () => semThVal.textContent = semTh.value);
-    alpha.addEventListener('input', () => alphaVal.textContent = alpha.value);
-
-    btnAsk.onclick = doAsk;
-    btnQuery.onclick = doQuery;
-    queryInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') doAsk(); });
-
-    // ------- API 호출 함수들 -------
-    async function refreshHealth() {
-      if (!ensureBase()) return;
-      const base = getBase();
-      hide(healthBox);
-      try {
-        const resp = await fetch(base + '/health');
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-        const ready = data?.ready ? '✅ ready:true' : '⚠️ ready:false (먼저 /load 또는 /rebuild 실행 필요)';
-        show(healthBox, data?.ready, `${ready}\n\n${JSON.stringify(data, null, 2)}`, data?.ready ? 'ok' : 'warn');
-      } catch (e) {
-        show(healthBox, false, String(e));
-      }
-    }
-
-    async function refreshCategories() {
-      const base = getBase();
-      if (!base) return;
-      try {
-        const resp = await fetch(base + '/categories');
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-        const cats = data?.categories || [];
-        // reset select
-        categorySelect.innerHTML = '<option value="">자동(권장)</option>';
-        cats.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c; opt.textContent = c;
-          categorySelect.appendChild(opt);
-        });
-      } catch (e) {
-        console.warn('카테고리 가져오기 실패:', e);
-      }
-    }
-
-    async function doAsk() {
-      if (!ensureBase()) return;
-      const base = getBase();
-      const q = queryInput.value.trim();
-      if (!q) { alert('질문을 입력하세요.'); return; }
-
-      setLoading([btnAsk, btnQuery], true);
-      routesWrap.style.display = 'none';
-      selectedWrap.style.display = 'none';
-      answerWrap.style.display = 'none';
-      docsEl.innerHTML = '';
-      countBadge.style.display = 'none';
-      rawBox.style.display = 'none';
-
-      try {
-        const body = {
-          query: q,
-          top_k: Number(topKEl.value) || 5,
-          sem_threshold: Number(semTh.value),
-        };
-        const sel = categorySelect.value.trim();
-        if (sel) body.category = sel;
-        const a = Number(alpha.value);
-        if (!Number.isNaN(a)) body.alpha = a;
-
-        const resp = await fetch(base + '/ask', {
-          method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)
-        });
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-
-        // 렌더
-        renderRoutes(data.routes);
-        setSelectedCategory(data.selected_category);
-        renderAnswer(data.answer);
-        renderPassages(data.passages);
-        rawEl.textContent = JSON.stringify(data, null, 2);
-        rawBox.style.display = 'block';
-      } catch (e) {
-        show(queryStatus, false, String(e));
-      } finally {
-        setLoading([btnAsk, btnQuery], false);
-      }
-    }
-
-    async function doQuery() {
-      if (!ensureBase()) return;
-      const base = getBase();
-      const q = queryInput.value.trim();
-      if (!q) { alert('질문을 입력하세요.'); return; }
-
-      const sel = categorySelect.value.trim();
-      if (!sel) {
-        if (!confirm('카테고리가 비어 있습니다. 자동 라우팅(/ask)을 대신 실행할까요?')) {
-          return;
-        }
-        return doAsk();
-      }
-
-      setLoading([btnAsk, btnQuery], true);
-      routesWrap.style.display = 'none';
-      answerWrap.style.display = 'none';
-      docsEl.innerHTML = '';
-      countBadge.style.display = 'none';
-      rawBox.style.display = 'none';
-
-      try {
-        const body = {
-          query: q,
-          top_k: Number(topKEl.value) || 5,
-          category: sel
-        };
-        const a = Number(alpha.value);
-        if (!Number.isNaN(a)) body.alpha = a;
-
-        const resp = await fetch(base + '/query', {
-          method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body)
-        });
-        const data = await asJson(resp);
-        if (!resp.ok) throw new Error(httpErrText(resp, data));
-
-        // 렌더
-        setSelectedCategory(data.selected_category);
-        // /query는 results 배열(title, content). passages로 변환해서 렌더
-        const passages = (data.results || []).map(r => ({ source: r.title, text: r.content }));
-        renderPassages(passages);
-        rawEl.textContent = JSON.stringify(data, null, 2);
-        rawBox.style.display = 'block';
-      } catch (e) {
-        show(queryStatus, false, String(e));
-      } finally {
-        setLoading([btnAsk, btnQuery], false);
-      }
-    }
-  </script>
-</body>
-</html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HACCP RAG 검색 UI</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a33; --muted:#97a0c3; --text:#e8edff;
+    --primary:#6ea8ff; --accent:#8ad6c9; --warn:#ffb86b; --danger:#ff6b7b;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Malgun Gothic,sans-serif;
+    background:linear-gradient(120deg,#0b1020,#0f1630 60%,#0b1020);
+    color:var(--text);
+  }
+  header{
+    position:sticky; top:0; z-index:10; backdrop-filter:saturate(160%) blur(8px);
+    background:rgba(10,16,34,.65); border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .container{max-width:1100px; margin:0 auto; padding:18px}
+  h1{margin:0 0 4px 0; font-size:22px}
+  .sub{color:var(--muted); font-size:13px}
+  main{max-width:1100px; margin:18px auto; padding:0 18px 80px}
+  .grid{display:grid; gap:16px}
+  .cols-2{grid-template-columns:1.1fr .9fr}
+  .panel{
+    background:var(--panel); border:1px solid rgba(255,255,255,.08);
+    border-radius:var(--radius); padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+  }
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  label{font-size:12px; color:var(--muted)}
+  input,select,textarea,button{
+    font:inherit; color:var(--text); background:#0c1430; border:1px solid rgba(255,255,255,.12);
+    border-radius:12px; padding:10px 12px; outline:none;
+  }
+  input::placeholder,textarea::placeholder{color:#8e96bb}
+  input,select{height:40px}
+  textarea{width:100%; min-height:120px; resize:vertical}
+  button{
+    background:linear-gradient(160deg,#5f8fff,#6ea8ff); border:none; cursor:pointer;
+    transition:.15s transform ease, .15s filter ease; font-weight:600;
+  }
+  button:hover{filter:saturate(115%) brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  .btn-secondary{background:#152043}
+  .btn-danger{background:linear-gradient(160deg,#ff6b7b,#ff758c)}
+  .btn-ghost{background:transparent; border:1px dashed rgba(255,255,255,.18)}
+  .tiny{font-size:12px}
+  .pill{
+    padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.15);
+    color:var(--muted); font-size:11px; display:inline-flex; align-items:center; gap:6px;
+  }
+  .status-dot{width:8px; height:8px; border-radius:50%}
+  .ok{background:#63d19e} .bad{background:#ff6b7b} .warn{background:#ffb86b}
+  .cards{display:grid; gap:12px}
+  .card{
+    background:#0c1430; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:1
