@@ -1,272 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HACCP RAG Test (Vanilla)</title>
-  <style>
-    :root { --bd:#ddd; --muted:#666; --err:#b10000; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:0; padding:24px; }
-    h1 { margin:0 0 12px; }
-    .row { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
-    input, button { padding:8px 10px; font-size:14px; }
-    input[type="text"] { flex:1; min-width:220px; }
-    .btn { border:1px solid var(--bd); border-radius:8px; background:#fff; cursor:pointer; }
-    .btn:disabled { opacity:.6; cursor:not-allowed; }
-    .card { border:1px solid var(--bd); border-radius:10px; padding:12px; margin:8px 0; }
-    .muted { color:var(--muted); font-size:12px; }
-    .error { background:#fff3f3; border:1px solid #ffcccc; color:var(--err); padding:10px; border-radius:8px; white-space:pre-wrap; }
-    .chips { display:flex; flex-wrap:wrap; gap:6px; }
-    .chip { border:1px solid var(--bd); border-radius:999px; padding:6px 12px; background:#fff; cursor:pointer; }
-    .chip.active { background:#eef; border-color:#99b; }
-    .tag { font-size:12px; padding:2px 8px; border:1px solid var(--bd); border-radius:999px; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
-    @media (min-width: 960px) {
-      .grid { grid-template-columns: 1.1fr 1.4fr; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>법률 질의응답 시스템</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <h1>HACCP RAG Test (Vanilla)</h1>
+    <div class="container">
+        <h1>🔍 법령 RAG 검색 시스템</h1>
+        <div class="controls">
+            <button id="autoTestBtn">자동 테스트 실행</button>
+        </div>
 
-  <!-- API 설정 -->
-  <div class="row">
-    <input id="apiBase" type="text" placeholder="API 주소 (예: http://<서버IP>:8000)" />
-    <button id="saveApi" class="btn">저장</button>
-    <button id="btnHealth" class="btn">상태 확인</button>
-    <a id="healthLink" href="#" target="_blank" rel="noreferrer" class="btn" style="text-decoration:none;display:inline-flex;align-items:center;">/health</a>
-    <button id="btnLoad" class="btn">인덱스 로드</button>
-    <button id="btnRebuild" class="btn">인덱스 생성</button>
-    <span id="readyTag" class="tag">Not Ready</span>
-  </div>
-
-  <div id="mixed" class="error" style="display:none;"></div>
-
-  <!-- 질문 입력 -->
-  <div class="row">
-    <input id="query" type="text" placeholder="질문을 입력하세요" />
-    <button id="searchBtn" class="btn">질문 실행</button>
-  </div>
-
-  <div id="error" class="error" style="display:none;"></div>
-
-  <!-- 결과 레이아웃: 좌측 답변/라우팅, 우측 관련 조문 -->
-  <div class="grid">
-    <div>
-      <div id="answer" class="card" style="display:none;"></div>
-      <div id="routesWrap" class="card" style="display:none;">
-        <div class="muted" style="margin-bottom:6px;">라우팅 (법령 선택)</div>
-        <div id="routes" class="chips"></div>
-      </div>
+        <div class="input-container">
+            <input type="text" id="queryInput" placeholder="질문을 입력하세요. 'exit'을 입력하면 종료됩니다.">
+            <button id="searchBtn">검색</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <div id="results">
+            <h2>📜 관련 조문 문단</h2>
+            <div id="docResults"></div>
+        </div>
     </div>
-    <div>
-      <div class="muted" style="margin:8px 0;">관련 조문</div>
-      <div id="passages"></div>
-    </div>
-  </div>
-
-  <script>
-    const apiBaseEl   = document.getElementById('apiBase');
-    const saveApiBtn  = document.getElementById('saveApi');
-    const healthBtn   = document.getElementById('btnHealth');
-    const healthLink  = document.getElementById('healthLink');
-    const loadBtn     = document.getElementById('btnLoad');
-    const rebuildBtn  = document.getElementById('btnRebuild');
-    const readyTag    = document.getElementById('readyTag');
-
-    const mixedEl   = document.getElementById('mixed');
-    const errEl     = document.getElementById('error');
-
-    const searchBtn = document.getElementById('searchBtn');
-    const queryEl   = document.getElementById('query');
-
-    const answerEl  = document.getElementById('answer');
-    const routesWrap= document.getElementById('routesWrap');
-    const routesEl  = document.getElementById('routes');
-    const passagesEl= document.getElementById('passages');
-
-    // 상태
-    let READY = false;
-    let currentLaw = '';
-    let lastPassages = [];
-
-    // 저장된 API 불러오기
-    apiBaseEl.value = localStorage.getItem('API_BASE') || '';
-
-    function updateLinks() {
-      const base = apiBaseEl.value.trim().replace(/\/+$/,'');
-      if (base) healthLink.href = base + '/health';
-      // Mixed Content 경고
-      if (location.protocol === 'https:' && /^http:\/\//i.test(base)) {
-        mixedEl.style.display = 'block';
-        mixedEl.textContent = '이 페이지는 HTTPS인데 API가 HTTP입니다. 브라우저가 요청을 차단합니다 (Mixed Content). API를 HTTPS로 노출하거나, 페이지를 HTTP로 열어주세요.';
-      } else {
-        mixedEl.style.display = 'none';
-      }
-    }
-    updateLinks();
-
-    function setReady(v) {
-      READY = !!v;
-      readyTag.textContent = READY ? 'Ready' : 'Not Ready';
-      readyTag.style.background = READY ? '#eef' : '#fff';
-    }
-
-    function esc(s='') {
-      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    }
-
-    async function call(path, init) {
-      const base = apiBaseEl.value.trim().replace(/\/+$/,'');
-      if (!base) throw new Error('API 주소를 먼저 입력/저장하세요.');
-      const res = await fetch(base + path, init);
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      return res.json();
-    }
-
-    function clearResults() {
-      errEl.style.display = 'none';
-      errEl.textContent = '';
-      answerEl.style.display = 'none';
-      answerEl.innerHTML = '';
-      routesWrap.style.display = 'none';
-      routesEl.innerHTML = '';
-      passagesEl.innerHTML = '';
-      currentLaw = '';
-      lastPassages = [];
-    }
-
-    function renderAnswer(answer) {
-      if (!answer) { answerEl.style.display='none'; return; }
-      answerEl.style.display = 'block';
-      answerEl.innerHTML = `<div class="muted" style="margin-bottom:6px;">답변</div>
-        <div>${esc(answer).replace(/\n/g,'<br>')}</div>`;
-    }
-
-    function renderRoutes(routes=[]) {
-      if (!routes.length) {
-        routesWrap.style.display='none';
-        routesEl.innerHTML='';
-        return;
-      }
-      routesWrap.style.display='block';
-      const items = [{law:'(전체)'}].concat(routes);
-      routesEl.innerHTML = items.map(r => {
-        const law = r.law || '(알수없음)';
-        const active = (currentLaw ? (law===currentLaw) : (law==='(전체)'));
-        return `<button class="chip ${active?'active':''}" data-law="${esc(law)}">${esc(law)}</button>`;
-      }).join('');
-      routesEl.querySelectorAll('button[data-law]').forEach(btn=>{
-        btn.onclick = () => {
-          const law = btn.getAttribute('data-law');
-          currentLaw = (law === '(전체)') ? '' : law;
-          renderRoutes(items.slice(1));   // 첫칩 제외한 원 데이터 재렌더
-          renderPassages(lastPassages);
-        };
-      });
-    }
-
-    function renderPassages(passages=[]) {
-      passagesEl.innerHTML = '';
-      const filtered = currentLaw
-        ? passages.filter(p => (p.source||'').startsWith(currentLaw))
-        : passages;
-
-      if (!filtered.length) {
-        passagesEl.innerHTML = `<div class="muted">관련 조문 없음</div>`;
-        return;
-      }
-
-      filtered.forEach(r => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <div class="muted" style="margin-bottom:6px;">${esc(r.source || '')}</div>
-          <div style="white-space:normal">${esc((r.enriched_text || r.text || '')).replace(/\n/g,'<br>')}</div>
-        `;
-        passagesEl.appendChild(card);
-      });
-    }
-
-    // 버튼 이벤트
-    saveApiBtn.onclick = () => {
-      localStorage.setItem('API_BASE', apiBaseEl.value.trim());
-      updateLinks();
-      alert('저장 완료');
-    };
-
-    healthBtn.onclick = async () => {
-      errEl.style.display='none'; errEl.textContent='';
-      try {
-        const data = await call('/health');
-        setReady(!!data.ready);
-        alert(`status: ${data.status}\nready: ${data.ready}`);
-      } catch (e) {
-        setReady(false);
-        errEl.style.display='block'; errEl.textContent = String(e);
-      }
-    };
-
-    loadBtn.onclick = async () => {
-      errEl.style.display='none'; errEl.textContent='';
-      try {
-        const data = await call('/load', { method:'POST' });
-        setReady(true);
-        alert(`인덱스 로드 완료 (docs: ${data.docs}, chunks: ${data.chunks})`);
-      } catch (e) {
-        setReady(false);
-        errEl.style.display='block'; errEl.textContent = String(e);
-      }
-    };
-
-    rebuildBtn.onclick = async () => {
-      errEl.style.display='none'; errEl.textContent='';
-      rebuildBtn.disabled = true;
-      try {
-        const data = await call('/rebuild', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ files: null }) });
-        setReady(true);
-        alert(`인덱스 생성 완료 (docs: ${data.docs}, chunks: ${data.chunks})`);
-      } catch (e) {
-        setReady(false);
-        errEl.style.display='block'; errEl.textContent = String(e);
-      } finally {
-        rebuildBtn.disabled = false;
-      }
-    };
-
-    searchBtn.onclick = async () => {
-      errEl.style.display='none';
-      clearResults();
-      const q = queryEl.value.trim();
-      if (!q) { alert('질문을 입력하세요.'); return; }
-      try {
-        // ✅ /ask: 검색 + 라우팅 + 답변 + 관련 조문
-        const data = await call('/ask', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ query: q, top_k: 5, save_log: true })
-        });
-
-        const answer   = data.answer || '';
-        const routes   = data.routes || [];
-        const passages = data.passages || [];
-
-        lastPassages = passages;
-        currentLaw   = '';              // 새 검색 시 전체 보기
-
-        renderAnswer(answer);
-        renderRoutes(routes);
-        renderPassages(passages);
-
-        if ((!routes.length) && (!passages.length)) {
-          passagesEl.innerHTML = '<div class="muted">결과 없음</div>';
-        }
-      } catch (e) {
-        errEl.style.display='block';
-        errEl.textContent = String(e);
-        console.error(e);
-      }
-    };
-  </script>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
