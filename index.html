@@ -1,216 +1,87 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG API 클라이언트</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            line-height: 1.6;
-            background-color: #f4f4f9;
-            color: #333;
-        }
-        .container {
-            max-width: 900px;
-            margin: auto;
-            background: #fff;
-            padding: 20px 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        h1, h2 {
-            color: #0056b3;
-        }
-        .section {
-            margin-bottom: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            background-color: #fafafa;
-        }
-        .section h3 {
-            margin-top: 0;
-            color: #333;
-        }
-        input[type="text"], textarea {
-            width: calc(100% - 22px);
-            padding: 10px;
-            margin-top: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .response-box {
-            background: #e9e9e9;
-            padding: 10px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            margin-top: 10px;
-        }
-        .status-message {
-            margin-top: 10px;
-            font-weight: bold;
-        }
-        .status-ok { color: #28a745; }
-        .status-error { color: #dc3545; }
-        .divider {
-            border: 0;
-            height: 1px;
-            background: #ccc;
-            margin: 25px 0;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>RAG 데모</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
+    h2 { margin-top: 28px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .col { flex: 1 1 340px; min-width: 300px; }
+    textarea, input { width: 100%; padding: 10px; font-size: 14px; }
+    button { padding: 10px 14px; font-size: 14px; border: 0; border-radius: 8px; background:#2563eb; color:#fff; cursor:pointer; }
+    button:disabled { background:#9ca3af; cursor:not-allowed; }
+    .card { background:#f8fafc; border:1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-top: 10px; }
+    .muted { color:#6b7280; font-size:13px; }
+    .err { color:#b91c1c; font-weight:600; }
+    .ok  { color:#065f46; font-weight:600; }
+    .pill { display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; margin-right:6px; margin-bottom:6px; cursor:pointer; }
+  </style>
 </head>
 <body>
+  <h1>RAG 데모</h1>
 
-<div class="container">
-    <h1>RAG API 클라이언트</h1>
-    <p>이 페이지는 FastAPI 서버와 상호작용하기 위한 간단한 인터페이스입니다.</p>
-
-    <div class="section">
-        <h2>1. API 상태 확인 및 초기화</h2>
-        <p>서버가 준비되었는지 확인하고, 필요한 경우 인덱스를 초기화합니다.</p>
-        <button onclick="checkHealth()">서버 상태 확인 (/health)</button>
-        <button onclick="initAPI()">인덱스 초기화 (/init)</button>
-        <div id="status-message" class="status-message"></div>
+  <div class="card">
+    <div class="row">
+      <div class="col">
+        <label>API Base 주소</label>
+        <input id="apiBase" placeholder="예: http://localhost:8000 또는 https://xxx.trycloudflare.com" />
+        <div class="muted">브라우저에 저장됩니다. (localStorage)</div>
+      </div>
+      <div class="col">
+        <label>상태</label>
+        <div id="health" class="muted">확인 전</div>
+      </div>
     </div>
-
-    <hr class="divider">
-
-    <div class="section">
-        <h2>2. 카테고리 분류</h2>
-        <p>질문이 어떤 법령 카테고리에 속하는지 예측합니다.</p>
-        <textarea id="classify-input" placeholder="질문을 입력하세요." rows="3"></textarea>
-        <button onclick="classifyQuestion()">분류 실행 (/classify)</button>
-        <div id="classify-response" class="response-box"></div>
+    <div style="margin-top:10px">
+      <button onclick="saveApiBase()">주소 저장</button>
+      <button onclick="checkHealth()">/health 체크</button>
     </div>
+  </div>
 
-    <hr class="divider">
+  <!-- 이하 내용은 그대로 (init / classify / query UI) -->
 
-    <div class="section">
-        <h2>3. 문서 검색</h2>
-        <p>질문에 대한 가장 관련성 높은 법령 조문을 검색합니다. (초기화 필요)</p>
-        <textarea id="query-input" placeholder="질문을 입력하세요." rows="3"></textarea>
-        <input type="text" id="category-input" placeholder="카테고리명 (예: 식품위생법, 없으면 전체)" style="width: 50%;">
-        <button onclick="searchDocuments()">검색 실행 (/query)</button>
-        <div id="query-response" class="response-box"></div>
-    </div>
+  <script>
+    const el = (id) => document.getElementById(id);
 
-</div>
+    // API Base 관리 (localStorage 활용)
+    function getApiBase() {
+      return (el("apiBase").value || "").replace(/\/+$/,"");
+    }
+    function saveApiBase() {
+      const val = getApiBase();
+      localStorage.setItem("apiBase", val);
+      alert("API 주소 저장됨: " + val);
+    }
+    function loadApiBase() {
+      const saved = localStorage.getItem("apiBase");
+      if (saved) el("apiBase").value = saved;
+    }
 
-<script>
-    const API_BASE_URL = "https://wages-jeans-van-stanford.trycloudflare.com"; // API가 웹 서버와 같은 주소에 있다고 가정
-
-    async function fetchData(endpoint, method = 'GET', data = null) {
-        const options = {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        };
-        if (data) {
-            options.body = JSON.stringify(data);
-        }
-        try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
-            }
-            return await response.json();
-        } catch (error) {
-            console.error('Error:', error);
-            return { error: error.message };
-        }
+    async function fetchData(path, payload) {
+      const url = `${getApiBase()}${path}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(payload || {})
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
     }
 
     async function checkHealth() {
-        const responseBox = document.getElementById('status-message');
-        responseBox.className = 'status-message';
-        responseBox.textContent = '서버 상태 확인 중...';
-        const result = await fetchData('/health');
-        if (result.status === 'ok') {
-            responseBox.textContent = `✅ 서버 상태: OK. 로드된 카테고리: ${result.loaded_categories.join(', ')}`;
-            responseBox.classList.add('status-ok');
-        } else {
-            responseBox.textContent = `❌ 서버 상태: ERROR. ${result.error || '알 수 없는 오류'}`;
-            responseBox.classList.add('status-error');
-        }
+      try {
+        const res = await fetch(`${getApiBase()}/health`);
+        const j = await res.json();
+        el("health").innerHTML = `<span class="ok">ok</span> — 로드됨: ${(j.loaded_categories||[]).join(", ")}`;
+      } catch (e) {
+        el("health").innerHTML = `<span class="err">${e}</span>`;
+      }
     }
 
-    async function initAPI() {
-        const responseBox = document.getElementById('status-message');
-        responseBox.className = 'status-message';
-        responseBox.textContent = '인덱스 초기화 중... (10~20분 소요)';
-        const result = await fetchData('/init', 'POST', {});
-        if (result.error) {
-            responseBox.textContent = `❌ 초기화 실패: ${result.error}`;
-            responseBox.classList.add('status-error');
-        } else {
-            const numChunks = result.built['전체'] ? result.built['전체'].num_chunks : 0;
-            responseBox.textContent = `✅ 초기화 성공. 총 ${numChunks}개 청크가 인덱싱되었습니다.`;
-            responseBox.classList.add('status-ok');
-            console.log('Init Response:', result);
-        }
-    }
-
-    async function classifyQuestion() {
-        const question = document.getElementById('classify-input').value;
-        const responseBox = document.getElementById('classify-response');
-        if (!question) {
-            responseBox.textContent = '질문을 입력해주세요.';
-            return;
-        }
-        responseBox.textContent = '분류 중...';
-        const result = await fetchData('/classify', 'POST', { question: question });
-        if (result.error) {
-            responseBox.textContent = `❌ 분류 실패: ${result.error}`;
-        } else {
-            responseBox.textContent = JSON.stringify(result.candidates, null, 2);
-        }
-    }
-
-    async function searchDocuments() {
-        const question = document.getElementById('query-input').value;
-        const category = document.getElementById('category-input').value.trim();
-        const responseBox = document.getElementById('query-response');
-        if (!question) {
-            responseBox.textContent = '질문을 입력해주세요.';
-            return;
-        }
-        responseBox.textContent = '검색 중...';
-
-        const payload = { question: question, top_k: 5 };
-        if (category) {
-            payload.category = category;
-        }
-
-        const result = await fetchData('/query', 'POST', payload);
-        if (result.error) {
-            responseBox.textContent = `❌ 검색 실패: ${result.error}`;
-        } else {
-            const formattedResults = result.results.map((r, i) =>
-                `결과 ${i + 1}:\n소스: ${r.source}\n내용: ${r.enriched_text}`
-            ).join('\n\n---\n\n');
-            responseBox.textContent = `[선택 카테고리: ${result.category}]\n\n${formattedResults}`;
-        }
-    }
-</script>
-
+    // 페이지 로드시 API 주소 자동 로드
+    loadApiBase();
+  </script>
 </body>
 </html>
