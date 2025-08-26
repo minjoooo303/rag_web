@@ -134,6 +134,9 @@
     
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // 💡 여기입니다! API 서버의 기본 URL을 설정하는 부분입니다.
+            const API_BASE_URL = "https://competent-votes-figure-sometimes.trycloudflare.com";
+
             const queryInput = document.getElementById('queryInput');
             const searchBtn = document.getElementById('searchBtn');
             const autoTestBtn = document.getElementById('autoTestBtn');
@@ -177,16 +180,17 @@
                 }
                 if (query.toLowerCase() === 'exit') {
                     showStatus('종료합니다.');
-                    setTimeout(() => window.close(), 1000); // 브라우저 창 닫기
+                    setTimeout(() => window.close(), 1000);
                     return;
                 }
                 
                 clearStatus();
                 showStatus('🔎 관련 문서를 찾고 있습니다...');
-                docResultsDiv.innerHTML = ''; // 이전 결과 삭제
+                docResultsDiv.innerHTML = '';
 
                 try {
-                    const response = await fetch('/query', {
+                    // API_BASE_URL을 사용해 절대 경로로 변경
+                    const response = await fetch(`${API_BASE_URL}/query`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ query: query })
@@ -213,7 +217,8 @@
                 docResultsDiv.innerHTML = '';
 
                 try {
-                    const response = await fetch('/auto_test', {
+                    // API_BASE_URL을 사용해 절대 경로로 변경
+                    const response = await fetch(`${API_BASE_URL}/auto_test`, {
                         method: 'POST'
                     });
 
