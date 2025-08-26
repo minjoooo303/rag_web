@@ -1,61 +1,216 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HACCP RAG 검색 UI</title>
-<style>
-  :root{
-    --bg:#0b1020; --panel:#121a33; --muted:#97a0c3; --text:#e8edff;
-    --primary:#6ea8ff; --accent:#8ad6c9; --warn:#ffb86b; --danger:#ff6b7b;
-    --radius:16px;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Malgun Gothic,sans-serif;
-    background:linear-gradient(120deg,#0b1020,#0f1630 60%,#0b1020);
-    color:var(--text);
-  }
-  header{
-    position:sticky; top:0; z-index:10; backdrop-filter:saturate(160%) blur(8px);
-    background:rgba(10,16,34,.65); border-bottom:1px solid rgba(255,255,255,.06);
-  }
-  .container{max-width:1100px; margin:0 auto; padding:18px}
-  h1{margin:0 0 4px 0; font-size:22px}
-  .sub{color:var(--muted); font-size:13px}
-  main{max-width:1100px; margin:18px auto; padding:0 18px 80px}
-  .grid{display:grid; gap:16px}
-  .cols-2{grid-template-columns:1.1fr .9fr}
-  .panel{
-    background:var(--panel); border:1px solid rgba(255,255,255,.08);
-    border-radius:var(--radius); padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.25);
-  }
-  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
-  label{font-size:12px; color:var(--muted)}
-  input,select,textarea,button{
-    font:inherit; color:var(--text); background:#0c1430; border:1px solid rgba(255,255,255,.12);
-    border-radius:12px; padding:10px 12px; outline:none;
-  }
-  input::placeholder,textarea::placeholder{color:#8e96bb}
-  input,select{height:40px}
-  textarea{width:100%; min-height:120px; resize:vertical}
-  button{
-    background:linear-gradient(160deg,#5f8fff,#6ea8ff); border:none; cursor:pointer;
-    transition:.15s transform ease, .15s filter ease; font-weight:600;
-  }
-  button:hover{filter:saturate(115%) brightness(1.05)}
-  button:active{transform:translateY(1px)}
-  .btn-secondary{background:#152043}
-  .btn-danger{background:linear-gradient(160deg,#ff6b7b,#ff758c)}
-  .btn-ghost{background:transparent; border:1px dashed rgba(255,255,255,.18)}
-  .tiny{font-size:12px}
-  .pill{
-    padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.15);
-    color:var(--muted); font-size:11px; display:inline-flex; align-items:center; gap:6px;
-  }
-  .status-dot{width:8px; height:8px; border-radius:50%}
-  .ok{background:#63d19e} .bad{background:#ff6b7b} .warn{background:#ffb86b}
-  .cards{display:grid; gap:12px}
-  .card{
-    background:#0c1430; border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:1
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG API 클라이언트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #fff;
+            padding: 20px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        h1, h2 {
+            color: #0056b3;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        input[type="text"], textarea {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response-box {
+            background: #e9e9e9;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-top: 10px;
+        }
+        .status-message {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .status-ok { color: #28a745; }
+        .status-error { color: #dc3545; }
+        .divider {
+            border: 0;
+            height: 1px;
+            background: #ccc;
+            margin: 25px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>RAG API 클라이언트</h1>
+    <p>이 페이지는 FastAPI 서버와 상호작용하기 위한 간단한 인터페이스입니다.</p>
+
+    <div class="section">
+        <h2>1. API 상태 확인 및 초기화</h2>
+        <p>서버가 준비되었는지 확인하고, 필요한 경우 인덱스를 초기화합니다.</p>
+        <button onclick="checkHealth()">서버 상태 확인 (/health)</button>
+        <button onclick="initAPI()">인덱스 초기화 (/init)</button>
+        <div id="status-message" class="status-message"></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="section">
+        <h2>2. 카테고리 분류</h2>
+        <p>질문이 어떤 법령 카테고리에 속하는지 예측합니다.</p>
+        <textarea id="classify-input" placeholder="질문을 입력하세요." rows="3"></textarea>
+        <button onclick="classifyQuestion()">분류 실행 (/classify)</button>
+        <div id="classify-response" class="response-box"></div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="section">
+        <h2>3. 문서 검색</h2>
+        <p>질문에 대한 가장 관련성 높은 법령 조문을 검색합니다. (초기화 필요)</p>
+        <textarea id="query-input" placeholder="질문을 입력하세요." rows="3"></textarea>
+        <input type="text" id="category-input" placeholder="카테고리명 (예: 식품위생법, 없으면 전체)" style="width: 50%;">
+        <button onclick="searchDocuments()">검색 실행 (/query)</button>
+        <div id="query-response" class="response-box"></div>
+    </div>
+
+</div>
+
+<script>
+    const API_BASE_URL = window.location.origin; // API가 웹 서버와 같은 주소에 있다고 가정
+
+    async function fetchData(endpoint, method = 'GET', data = null) {
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        };
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Error:', error);
+            return { error: error.message };
+        }
+    }
+
+    async function checkHealth() {
+        const responseBox = document.getElementById('status-message');
+        responseBox.className = 'status-message';
+        responseBox.textContent = '서버 상태 확인 중...';
+        const result = await fetchData('/health');
+        if (result.status === 'ok') {
+            responseBox.textContent = `✅ 서버 상태: OK. 로드된 카테고리: ${result.loaded_categories.join(', ')}`;
+            responseBox.classList.add('status-ok');
+        } else {
+            responseBox.textContent = `❌ 서버 상태: ERROR. ${result.error || '알 수 없는 오류'}`;
+            responseBox.classList.add('status-error');
+        }
+    }
+
+    async function initAPI() {
+        const responseBox = document.getElementById('status-message');
+        responseBox.className = 'status-message';
+        responseBox.textContent = '인덱스 초기화 중... (10~20분 소요)';
+        const result = await fetchData('/init', 'POST', {});
+        if (result.error) {
+            responseBox.textContent = `❌ 초기화 실패: ${result.error}`;
+            responseBox.classList.add('status-error');
+        } else {
+            const numChunks = result.built['전체'] ? result.built['전체'].num_chunks : 0;
+            responseBox.textContent = `✅ 초기화 성공. 총 ${numChunks}개 청크가 인덱싱되었습니다.`;
+            responseBox.classList.add('status-ok');
+            console.log('Init Response:', result);
+        }
+    }
+
+    async function classifyQuestion() {
+        const question = document.getElementById('classify-input').value;
+        const responseBox = document.getElementById('classify-response');
+        if (!question) {
+            responseBox.textContent = '질문을 입력해주세요.';
+            return;
+        }
+        responseBox.textContent = '분류 중...';
+        const result = await fetchData('/classify', 'POST', { question: question });
+        if (result.error) {
+            responseBox.textContent = `❌ 분류 실패: ${result.error}`;
+        } else {
+            responseBox.textContent = JSON.stringify(result.candidates, null, 2);
+        }
+    }
+
+    async function searchDocuments() {
+        const question = document.getElementById('query-input').value;
+        const category = document.getElementById('category-input').value.trim();
+        const responseBox = document.getElementById('query-response');
+        if (!question) {
+            responseBox.textContent = '질문을 입력해주세요.';
+            return;
+        }
+        responseBox.textContent = '검색 중...';
+
+        const payload = { question: question, top_k: 5 };
+        if (category) {
+            payload.category = category;
+        }
+
+        const result = await fetchData('/query', 'POST', payload);
+        if (result.error) {
+            responseBox.textContent = `❌ 검색 실패: ${result.error}`;
+        } else {
+            const formattedResults = result.results.map((r, i) =>
+                `결과 ${i + 1}:\n소스: ${r.source}\n내용: ${r.enriched_text}`
+            ).join('\n\n---\n\n');
+            responseBox.textContent = `[선택 카테고리: ${result.category}]\n\n${formattedResults}`;
+        }
+    }
+</script>
+
+</body>
+</html>
