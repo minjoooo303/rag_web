@@ -4,7 +4,113 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>법률 질의응답 시스템</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #0056b3;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .input-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        #queryInput {
+            flex-grow: 1;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px 0 0 5px;
+            outline: none;
+        }
+
+        button {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            border-radius: 0 5px 5px 0;
+        }
+
+        #searchBtn {
+            background-color: #007bff;
+            color: white;
+        }
+
+        #searchBtn:hover {
+            background-color: #0056b3;
+        }
+
+        #autoTestBtn {
+            background-color: #28a745;
+            color: white;
+            border-radius: 5px;
+        }
+
+        #autoTestBtn:hover {
+            background-color: #218838;
+        }
+
+        #status {
+            padding: 10px;
+            background-color: #e9f5ff;
+            border: 1px solid #cce5ff;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none; /* 초기에는 숨김 */
+        }
+
+        #results h2 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+
+        .doc-item {
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-left: 5px solid #007bff;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+
+        .doc-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .doc-content {
+            color: #555;
+            white-space: pre-wrap;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -26,6 +132,114 @@
         </div>
     </div>
     
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const queryInput = document.getElementById('queryInput');
+            const searchBtn = document.getElementById('searchBtn');
+            const autoTestBtn = document.getElementById('autoTestBtn');
+            const statusDiv = document.getElementById('status');
+            const docResultsDiv = document.getElementById('docResults');
+
+            const showStatus = (message, type = 'info') => {
+                statusDiv.textContent = message;
+                statusDiv.style.display = 'block';
+                statusDiv.style.backgroundColor = type === 'error' ? '#f8d7da' : '#e9f5ff';
+                statusDiv.style.color = type === 'error' ? '#721c24' : '#0c5460';
+            };
+
+            const clearStatus = () => {
+                statusDiv.style.display = 'none';
+            };
+
+            const displayResults = (results) => {
+                docResultsDiv.innerHTML = '';
+                if (results.length === 0) {
+                    docResultsDiv.innerHTML = '<p>관련 문서를 찾지 못했습니다.</p>';
+                    return;
+                }
+
+                results.forEach((doc, index) => {
+                    const docItem = document.createElement('div');
+                    docItem.className = 'doc-item';
+                    docItem.innerHTML = `
+                        <p class="doc-title">${index + 1}. [제목] ${doc.title}</p>
+                        <p class="doc-content">[내용] ${doc.content}</p>
+                    `;
+                    docResultsDiv.appendChild(docItem);
+                });
+            };
+
+            const handleSearch = async () => {
+                const query = queryInput.value.trim();
+                if (!query) {
+                    alert('질문을 입력해주세요.');
+                    return;
+                }
+                if (query.toLowerCase() === 'exit') {
+                    showStatus('종료합니다.');
+                    setTimeout(() => window.close(), 1000); // 브라우저 창 닫기
+                    return;
+                }
+                
+                clearStatus();
+                showStatus('🔎 관련 문서를 찾고 있습니다...');
+                docResultsDiv.innerHTML = ''; // 이전 결과 삭제
+
+                try {
+                    const response = await fetch('/query', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: query })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showStatus('✅ 검색 완료.');
+                        displayResults(data.results);
+                    } else {
+                        showStatus(`❌ 오류: ${data.error}`, 'error');
+                    }
+                } catch (error) {
+                    showStatus('❌ 네트워크 오류가 발생했습니다. 서버가 실행 중인지 확인하세요.', 'error');
+                }
+            };
+
+            const handleAutoTest = async () => {
+                const confirmTest = confirm("자동 테스트를 시작하시겠습니까? (결과가 콘솔에 출력됩니다)");
+                if (!confirmTest) return;
+
+                showStatus('⏳ 자동 테스트 실행 중...');
+                docResultsDiv.innerHTML = '';
+
+                try {
+                    const response = await fetch('/auto_test', {
+                        method: 'POST'
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showStatus('✅ 자동 테스트 완료. 결과를 콘솔에서 확인하세요.');
+                        console.log("자동 테스트 결과:", data.results);
+                    } else {
+                        showStatus(`❌ 오류: ${data.error}`, 'error');
+                        console.error("자동 테스트 오류:", data.error);
+                    }
+                } catch (error) {
+                    showStatus('❌ 자동 테스트 중 네트워크 오류 발생.', 'error');
+                    console.error("자동 테스트 중 오류:", error);
+                }
+            };
+
+            searchBtn.addEventListener('click', handleSearch);
+            queryInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    handleSearch();
+                }
+            });
+            autoTestBtn.addEventListener('click', handleAutoTest);
+        });
+    </script>
 </body>
 </html>
