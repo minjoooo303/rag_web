@@ -1,87 +1,98 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <title>RAG 데모</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #111; }
-    h2 { margin-top: 28px; }
-    .row { display: flex; gap: 12px; flex-wrap: wrap; }
-    .col { flex: 1 1 340px; min-width: 300px; }
-    textarea, input { width: 100%; padding: 10px; font-size: 14px; }
-    button { padding: 10px 14px; font-size: 14px; border: 0; border-radius: 8px; background:#2563eb; color:#fff; cursor:pointer; }
-    button:disabled { background:#9ca3af; cursor:not-allowed; }
-    .card { background:#f8fafc; border:1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-top: 10px; }
-    .muted { color:#6b7280; font-size:13px; }
-    .err { color:#b91c1c; font-weight:600; }
-    .ok  { color:#065f46; font-weight:600; }
-    .pill { display:inline-block; background:#eef2ff; border:1px solid #c7d2fe; padding:2px 8px; border-radius:999px; margin-right:6px; margin-bottom:6px; cursor:pointer; }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RAG Router (Boot Once)</title>
+<style>
+  body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto; background:#0b1020; color:#e6edf3; margin:0; padding:24px}
+  .card{background:#0a0f1a; border:1px solid #1f2a44; border-radius:14px; padding:16px; margin-bottom:16px}
+  h1{margin:0 0 12px; color:#9cd2ff; font-size:20px}
+  label{display:block; margin:8px 0 4px; color:#9fb3c8}
+  input,select,button,textarea{background:#0a0f1a; color:#e6edf3; border:1px solid #1f2a44; border-radius:10px; padding:10px 12px}
+  button{cursor:pointer}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .muted{color:#9fb3c8}
+  pre{white-space:pre-wrap; background:#0b1326; border:1px solid #1f2a44; border-radius:10px; padding:12px; overflow:auto}
+  .src{font-size:12px; color:#a7b7cf}
+</style>
 </head>
 <body>
-  <h1>RAG 데모</h1>
-
   <div class="card">
-    <div class="row">
-      <div class="col">
-        <label>API Base 주소</label>
-        <input id="apiBase" placeholder="예: http://localhost:8000 또는 https://xxx.trycloudflare.com" />
-        <div class="muted">브라우저에 저장됩니다. (localStorage)</div>
-      </div>
-      <div class="col">
-        <label>상태</label>
-        <div id="health" class="muted">확인 전</div>
-      </div>
+    <h1>RAG Router (Boot Once)</h1>
+    <div id="menu"></div>
+    <div class="row" style="margin-top:10px">
+      <label>모드</label>
+      <select id="mode">
+        <option value="law">법률 RAG</option>
+        <option value="manual">매뉴얼 RAG</option>
+      </select>
+      <label style="margin-left:8px">질문</label>
+      <input id="question" style="flex:1" placeholder="예: 식품위생법에서 영업 허가 요건은?"/>
+      <button id="askBtn">추천 라우팅</button>
     </div>
-    <div style="margin-top:10px">
-      <button onclick="saveApiBase()">주소 저장</button>
-      <button onclick="checkHealth()">/health 체크</button>
+    <div class="muted" style="margin-top:6px">메뉴 → 모드 선택 → 질문 → 추천 라우팅 → 선택 → 검색 Top-5 → LLM 응답</div>
+  </div>
+
+  <div class="card" id="recoCard" style="display:none">
+    <h1>추천 라우팅</h1>
+    <div id="recoText" class="muted"></div>
+    <div class="row" style="margin-top:8px">
+      <label>라우팅 선택</label>
+      <select id="selection"></select>
+      <button id="searchBtn">검색 실행</button>
     </div>
   </div>
 
-  <!-- 이하 내용은 그대로 (init / classify / query UI) -->
+  <div class="card" id="resultCard" style="display:none">
+    <h1>검색 결과 (Top-5)</h1>
+    <div id="picked" class="muted"></div>
+    <div id="results"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="answerBtn">LLM 응답 생성</button>
+    </div>
+  </div>
 
-  <script>
-    const el = (id) => document.getElementById(id);
+  <div class="card" id="answerCard" style="display:none">
+    <h1>LLM 응답</h1>
+    <div id="llm"></div>
+    <h1 style="margin-top:16px">근거(관련 조문/본문)</h1>
+    <div id="evidence"></div>
+  </div>
 
-    // API Base 관리 (localStorage 활용)
-    function getApiBase() {
-      return (el("apiBase").value || "").replace(/\/+$/,"");
-    }
-    function saveApiBase() {
-      const val = getApiBase();
-      localStorage.setItem("apiBase", val);
-      alert("API 주소 저장됨: " + val);
-    }
-    function loadApiBase() {
-      const saved = localStorage.getItem("apiBase");
-      if (saved) el("apiBase").value = saved;
-    }
+<script>
+const api = `${location.protocol}//${location.host}`;
+const $ = id => document.getElementById(id);
 
-    async function fetchData(path, payload) {
-      const url = `${getApiBase()}${path}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify(payload || {})
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    }
+async function loadMenu(){
+  const r = await fetch(`${api}/menu`);
+  const m = await r.json();
+  $('menu').innerHTML = `<div class="muted">${m.title}</div>`;
+}
+loadMenu();
 
-    async function checkHealth() {
-      try {
-        const res = await fetch(`${getApiBase()}/health`);
-        const j = await res.json();
-        el("health").innerHTML = `<span class="ok">ok</span> — 로드됨: ${(j.loaded_categories||[]).join(", ")}`;
-      } catch (e) {
-        el("health").innerHTML = `<span class="err">${e}</span>`;
-      }
-    }
+let lastAsk=null, lastSearch=null;
 
-    // 페이지 로드시 API 주소 자동 로드
-    loadApiBase();
-  </script>
-</body>
-</html>
+$('askBtn').onclick = async ()=>{
+  const mode = $('mode').value;
+  const question = $('question').value.trim();
+  if(!question){ alert('질문을 입력하세요'); return; }
+
+  const r = await fetch(`${api}/ask`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode, question})
+  });
+  if(!r.ok){ alert('추천 실패'); return; }
+  const data = await r.json();
+  lastAsk = data;
+
+  // 추천 표시
+  let text = '';
+  if(mode==='manual'){
+    const rec = data.recommended||[];
+    text = rec.length ? ('추천: ' + rec.map(x=>`${x.category} (sim=${x.sim.toFixed(2)})`).join(', ')) : '추천 없음(전체 검색 권장)';
+    $('selection').innerHTML = ''; // 0=전체(idx_all)도 허용
+    const opts = [];
+    if(data.all_categories && data.all_categories.includes('전체(idx_all)')){
+      opts.push(['0','0) 전체(idx_all)']);
+      (data.all_categories.filter(x=_
